@@ -14,7 +14,6 @@ const (
 	Init Status = iota
 	Fail
 	Success
-
 )
 
 type Spec struct {
@@ -42,7 +41,13 @@ type ReqUser struct {
 	} `json:"userlist"`
 }
 
-// Pipeline impl Coder
+func (msg *Message) Clone() core.IObject {
+	result := &Message{}
+	core.Clone(msg, result)
+	return result
+}
+
+// Message impl Coder
 func (*Message) Decode(op *gtm.Op) (core.IObject, error) {
 	message := &Message{}
 	if err := core.ObjectToResource(op.Data, message); err != nil {

@@ -21,6 +21,8 @@ import (
 
 var _ Controller = &messageController{}
 
+var Token string
+
 type messageController struct {
 	store.IKVStore
 	proc *proc.Proc
@@ -36,6 +38,8 @@ func NewUserController(store store.IKVStore) *messageController {
 }
 
 func (a *messageController) Run() error {
+	go a.recvtoken(a.proc.Error())
+	time.Sleep(time.Second * 1)
 	a.proc.Add(a.recvUser)
 	a.proc.Add(a.recvMessage)
 
@@ -46,12 +50,7 @@ func (a *messageController) recvUser(errC chan<- error) {
 	log.Printf("start recv user\n")
 
 	for {
-		token, err := getToken()
-		if err != nil {
-			errC <- err
-			return
-		}
-		departments, err := GetDepartment(token)
+		departments, err := GetDepartment(Token)
 		if err != nil {
 			errC <- err
 			return
@@ -61,11 +60,7 @@ func (a *messageController) recvUser(errC chan<- error) {
 		}
 		departments.DeptIdList = append(departments.DeptIdList, 1)
 		for _, department := range departments.DeptIdList {
-			err = a.DepartmentChildrenList(token, department)
-			if err != nil {
-				errC <- err
-				return
-			}
+			go a.DepartmentChildrenList(Token, department)
 		}
 		log.Printf("save user finish\n")
 		time.Sleep(time.Minute * 10)
@@ -121,7 +116,7 @@ func GetDepartment(token string) (*message.ReqDepart, error) {
 
 }
 
-func (a *messageController) DepartmentChildrenList(token string, department int) error {
+func (a *messageController) DepartmentChildrenList(token string, department int) {
 	url := fmt.Sprintf("https://oapi.dingtalk.com/user/simplelist?access_token=%s&department_id=%d", token, department)
 	ro := &requests.RequestOptions{
 		Headers: map[string]string{
@@ -132,15 +127,15 @@ func (a *messageController) DepartmentChildrenList(token string, department int)
 	}
 	resp, err := requests.Get(url, ro)
 	if err != nil {
-		return err
+		log.Printf("department 获取user失败 %s", err.Error())
 	}
 	result := message.ReqUser{}
 	err = resp.JSON(&result)
 	if err != nil {
-		return err
+		log.Printf("department 获取user失败 %s", err.Error())
 	}
 	if result.ErrCode != 0 {
-		return errors.New("查询user失败")
+		log.Printf("department 获取user失败 %s", err.Error())
 	}
 	for _, userData := range result.UserList {
 		user := message.User{
@@ -154,17 +149,12 @@ func (a *messageController) DepartmentChildrenList(token string, department int)
 		user.GenerateVersion()
 		_, _, err := a.IKVStore.Apply(common.DefaultNamespace, common.User, user.UUID, &user, false)
 		if err != nil {
-			return err
+			log.Printf("department 保存 user %s", err.Error())
 		}
 	}
-	return nil
 }
 
 func (a *messageController) recvMessage(errC chan<- error) {
-	token, err := getToken()
-	if err != nil {
-		errC <- err
-	}
 	msgObjs, err := a.List(common.DefaultNamespace, common.MessageCenter, "", map[string]interface{}{}, 0, 0)
 	if err != nil {
 		errC <- err
@@ -184,9 +174,25 @@ func (a *messageController) recvMessage(errC chan<- error) {
 		if msgObj.GetResourceVersion() > version {
 			version = msgObj.GetResourceVersion()
 		}
-		go a.handleMessage(token, msgObj)
+		go a.handleMessage(Token, msgObj)
 	}
-	_ = mgsWatchChan
+	for {
+		select {
+		case item, ok := <-mgsWatchChan.ResultChan():
+			if !ok {
+				errC <- fmt.Errorf("recvMsg watch channal close")
+			}
+			if item.GetUUID() == "" {
+				continue
+			}
+			msgObj := &message.Message{}
+			if err := utils.UnstructuredObjectToInstanceObj(&item, msgObj); err != nil {
+				log.Printf("receive message UnmarshalInterfaceToResource error %s\n", err)
+				continue
+			}
+			go a.handleMessage(Token, msgObj)
+		}
+	}
 
 }
 
@@ -247,4 +253,15 @@ func (a *messageController) modifyMsgObjStatus(obj *message.Message) {
 		log.Printf("更新msg状态失败 err:%s ", err.Error())
 	}
 
+}
+
+func (a *messageController) recvtoken(errC chan<- error) {
+	for {
+		err := errors.New("")
+		Token, err = getToken()
+		if err != nil {
+			errC <- err
+		}
+		time.Sleep(time.Hour * 1)
+	}
 }
