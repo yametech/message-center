@@ -38,7 +38,7 @@ func NewUserController(store store.IKVStore) *messageController {
 }
 
 func (a *messageController) Run() error {
-	go a.recvtoken(a.proc.Error())
+	go a.recvToken(a.proc.Error())
 	time.Sleep(time.Second * 1)
 	a.proc.Add(a.recvUser)
 	a.proc.Add(a.recvMessage)
@@ -60,7 +60,7 @@ func (a *messageController) recvUser(errC chan<- error) {
 		}
 		departments.DeptIdList = append(departments.DeptIdList, 1)
 		for _, department := range departments.DeptIdList {
-			go a.DepartmentChildrenList(Token, department)
+			a.DepartmentChildrenList(Token, department)
 		}
 		log.Printf("save user finish\n")
 		time.Sleep(time.Minute * 10)
@@ -176,6 +176,8 @@ func (a *messageController) recvMessage(errC chan<- error) {
 		}
 		go a.handleMessage(Token, msgObj)
 	}
+
+	a.Watch2(common.DefaultNamespace, common.MessageCenter, version, mgsWatchChan)
 	for {
 		select {
 		case item, ok := <-mgsWatchChan.ResultChan():
@@ -222,9 +224,10 @@ func (a *messageController) handleMessage(token string, msgObj *message.Message)
 			"agent_id":    common.Agent,
 			"userid_list": sendUser,
 			"msg": map[string]interface{}{
-				"msgtype": "text",
-				"text": map[string]interface{}{
-					"content": msgObj.Spec.Content,
+				"msgtype": "markdown",
+				"markdown": map[string]interface{}{
+					"text":  msgObj.Spec.Content,
+					"title": msgObj.Spec.Title,
 				},
 			},
 		},
@@ -255,7 +258,7 @@ func (a *messageController) modifyMsgObjStatus(obj *message.Message) {
 
 }
 
-func (a *messageController) recvtoken(errC chan<- error) {
+func (a *messageController) recvToken(errC chan<- error) {
 	for {
 		err := errors.New("")
 		Token, err = getToken()

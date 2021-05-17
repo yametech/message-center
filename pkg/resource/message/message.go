@@ -18,7 +18,7 @@ const (
 
 type Spec struct {
 	SendUser []string `json:"send_user" bson:"send_user"`
-	MsgType  string   `json:"msg_type" bson:"msg_type"`
+	Title    string   `json:"title" bson:"title"`
 	Content  string   `json:"content" bson:"content"`
 	Status
 }

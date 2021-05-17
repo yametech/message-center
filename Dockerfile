@@ -23,5 +23,9 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a --ldflags "-extldflags -st
 FROM harbor.ym/devops/alpine:1.0
 WORKDIR /
 COPY --from=builder /workspace/controller .
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories && \
+  apk add tzdata && \
+  ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+  echo "Asia/Shanghai" > /etc/timezone
 
 ENTRYPOINT ["./controller"]
